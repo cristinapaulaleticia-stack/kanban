@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biblioteca Escolar | Projeto Kanban</title>
+<style>
+:root { --navy:#20304a; --blue:#4263eb; --light:#f4f6fb; --green:#2f9e44; --red:#e03131; --gold:#f08c00; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:Arial, sans-serif; background:var(--light); color:#202533; }
+header { background:var(--navy); color:white; padding:24px 18px; text-align:center; }
+header h1 { margin:0 0 8px; font-size:clamp(1.5rem,4vw,2.2rem); }
+header p { margin:0; color:#e6eaf2; }
+main { max-width:1100px; margin:22px auto; padding:0 14px 35px; }
+.notice { background:#e7f5ff; border-left:5px solid var(--blue); padding:12px 14px; border-radius:8px; margin-bottom:18px; }
+.tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+button { cursor:pointer; border:0; border-radius:8px; padding:10px 14px; font-weight:bold; }
+.tab { background:#dfe5f2; color:var(--navy); }
+.tab.active { background:var(--blue); color:white; }
+.panel { display:none; background:white; padding:18px; border-radius:12px; box-shadow:0 3px 14px #18274612; }
+.panel.active { display:block; }
+h2 { margin-top:0; color:var(--navy); }
+form { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 18px; }
+input, select { flex:1 1 180px; min-width:0; padding:11px; border:1px solid #cbd2e1; border-radius:8px; background:white; }
+.primary { background:var(--blue); color:white; }
+.success { background:var(--green); color:white; }
+.danger { background:var(--red); color:white; padding:7px 10px; }
+table { width:100%; border-collapse:collapse; margin-top:12px; font-size:.95rem; }
+th,td { padding:10px 8px; text-align:left; border-bottom:1px solid #e5e8f0; }
+th { background:#f0f3fa; color:var(--navy); }
+.empty { color:#687386; padding:12px 0; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin:14px 0; }
+.card { padding:16px; border-radius:10px; background:#f0f3fa; }
+.card strong { display:block; font-size:1.7rem; color:var(--blue); margin-top:6px; }
+.small { color:#657087; font-size:.9rem; }
+@media(max-width:600px) { table { font-size:.82rem; } th,td { padding:8px 5px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Biblioteca Escolar</h1>
+  <p>Projeto demonstrativo — planejamento com a metodologia Kanban</p>
+</header>
+<main>
+  <div class="notice"><strong>Como usar:</strong> cadastre livros e alunos, registre empréstimos e devoluções e consulte o relatório. Os dados ficam salvos neste navegador.</div>
+  <div class="tabs">
+    <button class="tab active" data-tab="livros">Livros</button>
+    <button class="tab" data-tab="alunos">Alunos</button>
+    <button class="tab" data-tab="emprestimos">Empréstimos / Devoluções</button>
+    <button class="tab" data-tab="consulta">Disponibilidade</button>
+    <button class="tab" data-tab="relatorios">Relatórios</button>
+  </div>
+
+  <section class="panel active" id="livros">
+    <h2>Cadastro de livros</h2>
+    <form id="formLivro">
+      <input id="tituloLivro" placeholder="Título do livro" required>
+      <input id="autorLivro" placeholder="Autor(a)" required>
+      <input id="quantidadeLivro" type="number" min="1" value="1" placeholder="Quantidade" required>
+      <button class="primary">Cadastrar livro</button>
+    </form>
+    <div id="listaLivros"></div>
+  </section>
+
+  <section class="panel" id="alunos">
+    <h2>Cadastro de alunos</h2>
+    <form id="formAluno">
+      <input id="nomeAluno" placeholder="Nome completo" required>
+      <input id="turmaAluno" placeholder="Turma (ex.: 1º A)" required>
+      <button class="primary">Cadastrar aluno</button>
+    </form>
+    <div id="listaAlunos"></div>
+  </section>
+
+  <section class="panel" id="emprestimos">
+    <h2>Registrar empréstimo</h2>
+    <form id="formEmprestimo">
+      <select id="alunoEmprestimo" required><option value="">Selecione um aluno</option></select>
+      <select id="livroEmprestimo" required><option value="">Selecione um livro disponível</option></select>
+      <button class="primary">Registrar empréstimo</button>
+    </form>
+    <h2>Empréstimos em aberto</h2>
+    <div id="listaEmprestimos"></div>
+  </section>
+
+  <section class="panel" id="consulta">
+    <h2>Livros disponíveis</h2>
+    <p class="small">Mostra a quantidade total, emprestada e disponível de cada título.</p>
+    <div id="listaDisponibilidade"></div>
+  </section>
+
+  <section class="panel" id="relatorios">
+    <h2>Relatório de empréstimos</h2>
+    <div id="resumo" class="cards"></div>
+    <div id="listaRelatorio"></div>
+  </section>
+</main>
+<script>
+const STORAGE_KEY = "bibliotecaEscolarKanban_v1";
+let dados = carregar();
+
+function carregar() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { livros: [], alunos: [], emprestimos: [] };
+  } catch { return { livros: [], alunos: [], emprestimos: [] }; }
+}
+function salvar() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+  renderizar();
+}
+function escapar(valor) {
+  return String(valor).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function emprestados(livroId) {
+  return dados.emprestimos.filter(e => e.livroId === livroId && !e.devolvido).length;
+}
+function disponiveis(livro) { return livro.quantidade - emprestados(livro.id); }
+function tabela(cabecalhos, linhas) {
+  if (!linhas.length) return '<p class="empty">Ainda não há registros.</p>';
+  return '<div style="overflow-x:auto"><table><thead><tr>' +
+    cabecalhos.map(h => `<th>${h}</th>`).join('') +
+    '</tr></thead><tbody>' + linhas.map(l => '<tr>' + l.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') +
+    '</tbody></table></div>';
+}
+document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === btn));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === btn.dataset.tab));
+}));
+
+document.getElementById("formLivro").addEventListener("submit", e => {
+  e.preventDefault();
+  dados.livros.push({
+    id: crypto.randomUUID(), titulo: document.getElementById("tituloLivro").value.trim(),
+    autor: document.getElementById("autorLivro").value.trim(),
+    quantidade: Number(document.getElementById("quantidadeLivro").value)
+  });
+  e.target.reset(); document.getElementById("quantidadeLivro").value = 1; salvar();
+});
+document.getElementById("formAluno").addEventListener("submit", e => {
+  e.preventDefault();
+  dados.alunos.push({ id: crypto.randomUUID(), nome: document.getElementById("nomeAluno").value.trim(), turma: document.getElementById("turmaAluno").value.trim() });
+  e.target.reset(); salvar();
+});
+document.getElementById("formEmprestimo").addEventListener("submit", e => {
+  e.preventDefault();
+  const alunoId = document.getElementById("alunoEmprestimo").value;
+  const livroId = document.getElementById("livroEmprestimo").value;
+  const livro = dados.livros.find(l => l.id === livroId);
+  if (!alunoId || !livro || disponiveis(livro) < 1) {
+    alert("Selecione um aluno e um livro disponível."); return;
+  }
+  dados.emprestimos.push({ id: crypto.randomUUID(), alunoId, livroId, data: new Date().toLocaleDateString("pt-BR"), devolvido: false, dataDevolucao: "" });
+  salvar();
+});
+function devolver(id) {
+  const emp = dados.emprestimos.find(e => e.id === id);
+  if (!emp || emp.devolvido) return;
+  emp.devolvido = true; emp.dataDevolucao = new Date().toLocaleDateString("pt-BR"); salvar();
+}
+function excluirLivro(id) {
+  if (dados.emprestimos.some(e => e.livroId === id && !e.devolvido)) { alert("Não é possível excluir um livro que está emprestado."); return; }
+  if (confirm("Deseja excluir este livro?")) { dados.livros = dados.livros.filter(l => l.id !== id); salvar(); }
+}
+function excluirAluno(id) {
+  if (dados.emprestimos.some(e => e.alunoId === id && !e.devolvido)) { alert("Este aluno possui empréstimo em aberto."); return; }
+  if (confirm("Deseja excluir este aluno?")) { dados.alunos = dados.alunos.filter(a => a.id !== id); salvar(); }
+}
+function renderizar() {
+  document.getElementById("listaLivros").innerHTML = tabela(["Título","Autor(a)","Total","Disponíveis","Ação"], dados.livros.map(l => [
+    escapar(l.titulo), escapar(l.autor), l.quantidade, disponiveis(l),
+    `<button class="danger" onclick="excluirLivro('${l.id}')">Excluir</button>`
+  ]));
+  document.getElementById("listaAlunos").innerHTML = tabela(["Nome","Turma","Ação"], dados.alunos.map(a => [
+    escapar(a.nome), escapar(a.turma), `<button class="danger" onclick="excluirAluno('${a.id}')">Excluir</button>`
+  ]));
+  const selectAluno = document.getElementById("alunoEmprestimo");
+  const selectLivro = document.getElementById("livroEmprestimo");
+  const alunoAtual = selectAluno.value, livroAtual = selectLivro.value;
+  selectAluno.innerHTML = '<option value="">Selecione um aluno</option>' + dados.alunos.map(a => `<option value="${a.id}">${escapar(a.nome)} — ${escapar(a.turma)}</option>`).join('');
+  selectLivro.innerHTML = '<option value="">Selecione um livro disponível</option>' + dados.livros.filter(l => disponiveis(l)>0).map(l => `<option value="${l.id}">${escapar(l.titulo)} (${disponiveis(l)} disponível(is))</option>`).join('');
+  if (dados.alunos.some(a=>a.id===alunoAtual)) selectAluno.value = alunoAtual;
+  if (dados.livros.some(l=>l.id===livroAtual && disponiveis(l)>0)) selectLivro.value = livroAtual;
+  const abertos = dados.emprestimos.filter(e => !e.devolvido);
+  document.getElementById("listaEmprestimos").innerHTML = tabela(["Aluno","Livro","Data","Ação"], abertos.map(e => {
+    const a = dados.alunos.find(x=>x.id===e.alunoId), l = dados.livros.find(x=>x.id===e.livroId);
+    return [escapar(a?.nome || "Aluno removido"), escapar(l?.titulo || "Livro removido"), e.data, `<button class="success" onclick="devolver('${e.id}')">Registrar devolução</button>`];
+  }));
+  document.getElementById("listaDisponibilidade").innerHTML = tabela(["Livro","Autor(a)","Total","Emprestados","Disponíveis"], dados.livros.map(l => [
+    escapar(l.titulo), escapar(l.autor), l.quantidade, emprestados(l.id), disponiveis(l)
+  ]));
+  const devolvidos = dados.emprestimos.filter(e=>e.devolvido).length;
+  document.getElementById("resumo").innerHTML =
+    `<div class="card">Livros cadastrados<strong>${dados.livros.length}</strong></div>`+
+    `<div class="card">Alunos cadastrados<strong>${dados.alunos.length}</strong></div>`+
+    `<div class="card">Empréstimos em aberto<strong>${abertos.length}</strong></div>`+
+    `<div class="card">Devoluções realizadas<strong>${devolvidos}</strong></div>`;
+  document.getElementById("listaRelatorio").innerHTML = tabela(["Aluno","Livro","Data do empréstimo","Situação","Data da devolução"], dados.emprestimos.map(e => {
+    const a = dados.alunos.find(x=>x.id===e.alunoId), l = dados.livros.find(x=>x.id===e.livroId);
+    return [escapar(a?.nome || "Aluno removido"), escapar(l?.titulo || "Livro removido"), e.data, e.devolvido ? "Devolvido" : "Em aberto", e.dataDevolucao || "—"];
+  }));
+}
+renderizar();
+</script>
+</body>
+</html>
